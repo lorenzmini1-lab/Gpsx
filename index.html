@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Avec Bouton Stop</title>
+    <title>GPS BUS - Version Finale Corrigée</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* Barre de contrôle avec 3 boutons */
+        /* Barre de contrôle supérieure */
         #controls { 
             background: #222; padding: 10px; z-index: 1000; 
             display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; 
@@ -22,6 +22,7 @@
         #btn-gps { background: #2ecc71; }
         #btn-stop { background: #e74c3c; }
 
+        /* Dashboard Vitesse et Directions */
         #dashboard {
             background: #fff; border-bottom: 3px solid #333;
             display: grid; grid-template-columns: 1fr 1.5fr 1fr;
@@ -34,6 +35,7 @@
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
 
+        /* Style du Point Bleu GPS */
         .blue-dot {
             background-color: #248aff;
             border: 3px solid white;
@@ -61,7 +63,7 @@
         </div>
         <div>
             <span id="status" class="val" style="font-size: 1.2rem; color: #e67e22;">OFF</span>
-            <span class="label">GPS</span>
+            <span class="label">SIGNAL</span>
         </div>
     </div>
 
@@ -70,6 +72,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
+        // 1. Initialisation de la carte
         const map = L.map('map', { zoomControl: false }).setView([50.79, 4.41], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -82,6 +85,7 @@
         let traceLayer;
         let watchId = null;
 
+        // Icône du point bleu
         const blueDotIcon = L.divIcon({
             className: 'blue-dot',
             iconSize: [20, 20],
@@ -90,6 +94,7 @@
         
         let userMarker = L.marker([0,0], {icon: blueDotIcon}).addTo(map);
 
+        // Calcul de l'angle pour les flèches
         function getBearing(p1, p2) {
             const lat1 = p1[0] * Math.PI / 180;
             const lat2 = p2[0] * Math.PI / 180;
@@ -100,6 +105,7 @@
             return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         }
 
+        // 2. Chargement du fichier GPX
         document.getElementById('gpxInput').onchange = function(e) {
             const reader = new FileReader();
             reader.onload = function(event) {
@@ -114,17 +120,17 @@
                     if (traceLayer) map.removeLayer(traceLayer);
                     traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6, opacity: 0.6}).addTo(map);
                     map.fitBounds(traceLayer.getBounds());
-                    instrDiv.innerText = "TRAJET OK";
-                    document.getElementById('btn-file').innerText = "✅ GPX OK";
+                    instrDiv.innerText = "TRAJET CHARGÉ";
+                    document.getElementById('btn-file').innerText = "✅ FICHIER OK";
                 }
             };
             reader.readAsText(e.target.files[0]);
         };
 
-        // DÉMARRER
+        // 3. Bouton DÉMARRER
         document.getElementById('btn-gps').onclick = function() {
-            if (tracePoints.length === 0) { alert("Charge le fichier d'abord !"); return; }
-            if (watchId !== null) return; // Déjà lancé
+            if (tracePoints.length === 0) { alert("Choisis d'abord le fichier GPX !"); return; }
+            if (watchId !== null) return;
 
             statusDiv.innerText = "ON";
             statusDiv.style.color = "#2ecc71";
@@ -163,10 +169,12 @@
                         else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
                     }
                 }
-            }, null, { enableHighAccuracy: true });
+            }, (err) => {
+                alert("Erreur GPS : " + err.message);
+            }, { enableHighAccuracy: true });
         };
 
-        // ARRÊTER
+        // 4. Bouton ARRÊTER
         document.getElementById('btn-stop').onclick = function() {
             if (watchId !== null) {
                 navigator.geolocation.clearWatch(watchId);
