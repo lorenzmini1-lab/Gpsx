@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Vitesse Corrigée</title>
+    <title>GPS BUS - Correction Hors Trajet</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -51,7 +51,6 @@
         let tracePoints = [];
         let traceLayer;
         let watchId = null;
-        let lastPos = null;
 
         const icon = L.divIcon({ className: 'user-icon-container', html: '<div id="user-dot" class="user-icon"></div>', iconSize: [30, 30], iconAnchor: [15, 15] });
         let userMarker = L.marker([0,0], {icon: icon}).addTo(map);
@@ -69,13 +68,12 @@
             reader.onload = function(event) {
                 const parser = new DOMParser();
                 const xml = parser.parseFromString(event.target.result, "text/xml");
-                const pts = Array.from(xml.querySelectorAll('trkpt')).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
-                if (pts.length > 0) {
-                    tracePoints = pts;
+                tracePoints = Array.from(xml.querySelectorAll('trkpt')).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
+                if (tracePoints.length > 0) {
                     if (traceLayer) map.removeLayer(traceLayer);
                     traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6, opacity: 0.6}).addTo(map);
                     map.fitBounds(traceLayer.getBounds());
-                    instrDiv.innerText = "TRAJET OK";
+                    instrDiv.innerText = "TRAJET CHARGÉ";
                 }
             };
             reader.readAsText(e.target.files[0]);
@@ -88,42 +86,43 @@
 
             watchId = navigator.geolocation.watchPosition(function(pos) {
                 const ici = [pos.coords.latitude, pos.coords.longitude];
+                const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
                 
-                // Calcul manuel de la vitesse si le téléphone renvoie 0 alors qu'on bouge
-                let speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-                
-                if (speed === 0 && lastPos) {
-                    const dist = L.latLng(ici).distanceTo(L.latLng(lastPos));
-                    if (dist > 1) speed = 5; // On force à 5km/h si on a bougé de plus d'un mètre
-                }
-                lastPos = ici;
-
                 speedDiv.innerText = speed;
                 userMarker.setLatLng(ici);
                 map.panTo(ici, { animate: true, duration: 0.5 });
 
-                // Correction de l'affichage ARRÊT
-                if (speed < 1.5) { // Seuil très bas pour éviter les faux arrêts
+                if (speed < 2) {
                     arrowDiv.innerText = "🛑";
                     instrDiv.innerText = "ARRÊT";
-                } else if (tracePoints.length > 0) {
+                    return;
+                }
+
+                if (tracePoints.length > 0) {
                     let minD = Infinity; let idx = -1;
                     for (let i = 0; i < tracePoints.length; i++) {
                         let d = L.latLng(ici).distanceTo(tracePoints[i]);
                         if (d < minD) { minD = d; idx = i; }
                     }
-                    if (idx !== -1 && idx < tracePoints.length - 12) {
+
+                    // --- NOUVELLE LOGIQUE DE SÉCURITÉ ---
+                    if (minD > 25) { // Si tu es à plus de 25m de la ligne bleue
+                        arrowDiv.innerText = "⚠️";
+                        instrDiv.innerText = "HORS TRAJET";
+                        instrDiv.style.color = "#e67e22";
+                    } else if (idx !== -1 && idx < tracePoints.length - 12) {
+                        instrDiv.style.color = "#3498db";
                         let p1 = tracePoints[idx]; let p2 = tracePoints[idx + 6]; let p3 = tracePoints[idx + 12];
                         let b1 = getBearing(p1, p2); let b2 = getBearing(p2, p3);
                         let diff = b2 - b1;
                         if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
-                        
+
                         if (diff > 25) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
                         else if (diff < -25) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
                         else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
                     }
                 }
-            }, null, { enableHighAccuracy: true, maximumAge: 0 });
+            }, null, { enableHighAccuracy: true });
         };
 
         document.getElementById('btn-stop').onclick = function() {
