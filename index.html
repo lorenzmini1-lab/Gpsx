@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Actualisation Forcée</title>
+    <title>GPS BUS - Correction Position Réelle</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         #controls { background: #222; padding: 10px; z-index: 1000; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-        .btn { padding: 15px 0; font-size: 0.85rem; font-weight: bold; text-align: center; border-radius: 8px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; }
+        .btn { padding: 15px 0; font-size: 0.85rem; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; }
         #btn-file { background: #f1c40f; color: #000; }
         #btn-gps { background: #2ecc71; }
         #btn-stop { background: #e74c3c; }
-        #dashboard { background: #fff; border-bottom: 3px solid #333; display: grid; grid-template-columns: 1fr 1.5fr 1fr; padding: 10px; text-align: center; align-items: center; }
-        .val { font-size: 2.2rem; font-weight: bold; color: #000; display: block; line-height: 1; }
+        #dashboard { background: #fff; border-bottom: 3px solid #333; display: grid; grid-template-columns: 1fr 1.5fr 1fr; padding: 10px; text-align: center; }
+        .val { font-size: 2.2rem; font-weight: bold; color: #000; display: block; }
         #arrow { font-size: 3.5rem; color: #3498db; }
-        .label { font-size: 0.7rem; color: #666; font-weight: bold; text-transform: uppercase; }
+        .label { font-size: 0.7rem; color: #666; font-weight: bold; }
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
         .user-icon { width: 30px; height: 30px; background: #248aff; border: 3px solid white; border-radius: 50% 50% 0 50%; transform: rotate(45deg); box-shadow: 0 0 15px rgba(36, 138, 255, 0.6); }
@@ -79,64 +79,19 @@
             reader.readAsText(e.target.files[0]);
         };
 
-        // Fonction de démarrage avec actualisation haute fréquence
         document.getElementById('btn-gps').onclick = function() {
-            statusDiv.innerText = "ACTIF";
-            statusDiv.style.color = "#2ecc71";
-            
-            // On coupe l'ancien suivi s'il existe pour forcer une nouvelle recherche
             if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+            
+            statusDiv.innerText = "RECHERCHE...";
+            statusDiv.style.color = "#f1c40f";
+
+            // Options forcées pour une position réelle
+            const gpsOptions = {
+                enableHighAccuracy: true, // Force l'utilisation du vrai GPS (pas le Wi-Fi)
+                maximumAge: 0,            // Interdit d'utiliser une position stockée en mémoire
+                timeout: 10000            // Temps max pour trouver un satellite
+            };
 
             watchId = navigator.geolocation.watchPosition(function(pos) {
-                const ici = [pos.coords.latitude, pos.coords.longitude];
-                const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-                
-                speedDiv.innerText = speed;
-                userMarker.setLatLng(ici);
-                map.panTo(ici, { animate: true, duration: 0.5 });
-
-                if (speed < 2) {
-                    arrowDiv.innerText = "🛑";
-                    instrDiv.innerText = "ARRÊT";
-                } else if (tracePoints.length > 0) {
-                    let minD = Infinity; let idx = -1;
-                    for (let i = 0; i < tracePoints.length; i++) {
-                        let d = L.latLng(ici).distanceTo(tracePoints[i]);
-                        if (d < minD) { minD = d; idx = i; }
-                    }
-
-                    if (minD > 25) {
-                        arrowDiv.innerText = "⚠️";
-                        instrDiv.innerText = "HORS TRAJET";
-                    } else if (idx !== -1 && idx < tracePoints.length - 12) {
-                        let p1 = tracePoints[idx]; let p2 = tracePoints[idx + 6]; let p3 = tracePoints[idx + 12];
-                        let b1 = getBearing(p1, p2); let b2 = getBearing(p2, p3);
-                        let diff = b2 - b1;
-                        if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
-
-                        if (diff > 25) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
-                        else if (diff < -25) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
-                        else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
-                    }
-                }
-            }, (err) => {
-                console.error(err);
-                statusDiv.innerText = "ERREUR";
-            }, { 
-                enableHighAccuracy: true, // Force l'utilisation de la puce GPS
-                maximumAge: 0,            // Ne pas utiliser de position en cache
-                timeout: 5000             // Actualiser toutes les 5 secondes maximum
-            });
-        };
-
-        document.getElementById('btn-stop').onclick = function() {
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-                statusDiv.innerText = "OFF";
-                instrDiv.innerText = "STOPPÉ";
-            }
-        };
-    </script>
-</body>
-</html>
+                statusDiv.innerText = "OK";
+                statusDiv.style.color = "#2ecc71";
