@@ -3,15 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Position Point Bleu</title>
+    <title>GPS BUS - Avec Bouton Stop</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; }
         
-        #controls { background: #222; padding: 10px; z-index: 1000; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .btn { padding: 15px 0; font-size: 1rem; font-weight: bold; text-align: center; border-radius: 10px; border: none; cursor: pointer; color: #fff; }
+        /* Barre de contrôle avec 3 boutons */
+        #controls { 
+            background: #222; padding: 10px; z-index: 1000; 
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; 
+        }
+        .btn { 
+            padding: 12px 0; font-size: 0.85rem; font-weight: bold; 
+            text-align: center; border-radius: 8px; border: none; 
+            cursor: pointer; color: #fff; text-transform: uppercase;
+        }
         #btn-file { background: #f1c40f; color: #000; }
         #btn-gps { background: #2ecc71; }
+        #btn-stop { background: #e74c3c; }
 
         #dashboard {
             background: #fff; border-bottom: 3px solid #333;
@@ -25,7 +34,6 @@
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
 
-        /* Style du point bleu GPS */
         .blue-dot {
             background-color: #248aff;
             border: 3px solid white;
@@ -37,8 +45,9 @@
 <body>
 
     <div id="controls">
-        <label class="btn" id="btn-file">📂 CHARGER GPX<input type="file" id="gpxInput" accept=".gpx"></label>
-        <button class="btn" id="btn-gps">🚀 START GPS</button>
+        <label class="btn" id="btn-file">📂 GPX<input type="file" id="gpxInput" accept=".gpx"></label>
+        <button class="btn" id="btn-gps">🚀 START</button>
+        <button class="btn" id="btn-stop">🛑 STOP</button>
     </div>
 
     <div id="dashboard">
@@ -71,8 +80,8 @@
         
         let tracePoints = [];
         let traceLayer;
+        let watchId = null;
 
-        // Création du Point Bleu (Icone personnalisée)
         const blueDotIcon = L.divIcon({
             className: 'blue-dot',
             iconSize: [20, 20],
@@ -112,19 +121,20 @@
             reader.readAsText(e.target.files[0]);
         };
 
+        // DÉMARRER
         document.getElementById('btn-gps').onclick = function() {
             if (tracePoints.length === 0) { alert("Charge le fichier d'abord !"); return; }
+            if (watchId !== null) return; // Déjà lancé
+
             statusDiv.innerText = "ON";
             statusDiv.style.color = "#2ecc71";
 
-            navigator.geolocation.watchPosition(function(pos) {
+            watchId = navigator.geolocation.watchPosition(function(pos) {
                 const ici = [pos.coords.latitude, pos.coords.longitude];
                 const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
                 
                 speedDiv.innerText = speed;
                 userMarker.setLatLng(ici);
-                
-                // On centre la carte sur le point bleu automatiquement
                 map.panTo(ici);
 
                 if (speed < 3) {
@@ -142,27 +152,31 @@
                         let p_actuel = tracePoints[idx];
                         let p_futur = tracePoints[idx + 6]; 
                         let p_loin = tracePoints[idx + 12];
-                        
                         let b_proche = getBearing(p_actuel, p_futur);
                         let b_loin = getBearing(p_futur, p_loin);
                         let diff = b_loin - b_proche;
-                        
                         if (diff > 180) diff -= 360;
                         if (diff < -180) diff += 360;
 
-                        if (diff > 25) { 
-                            arrowDiv.innerText = "➜"; 
-                            instrDiv.innerText = "DROITE"; 
-                        } else if (diff < -25) { 
-                            arrowDiv.innerText = "⬅"; 
-                            instrDiv.innerText = "GAUCHE"; 
-                        } else { 
-                            arrowDiv.innerText = "⬆"; 
-                            instrDiv.innerText = "DROIT"; 
-                        }
+                        if (diff > 25) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
+                        else if (diff < -25) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
+                        else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
                     }
                 }
             }, null, { enableHighAccuracy: true });
+        };
+
+        // ARRÊTER
+        document.getElementById('btn-stop').onclick = function() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                statusDiv.innerText = "OFF";
+                statusDiv.style.color = "#e67e22";
+                speedDiv.innerText = "0";
+                arrowDiv.innerText = "🧭";
+                instrDiv.innerText = "STOPPÉ";
+            }
         };
     </script>
 </body>
