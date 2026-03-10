@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS PRO</title>
+    <title>GPS BUS PRO - Position Optimisée</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -18,7 +18,17 @@
         .label { font-size: 0.7rem; color: #666; font-weight: bold; text-transform: uppercase; }
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
-        .blue-dot { background-color: #248aff; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.3); }
+
+        /* Point bleu avec flèche de direction */
+        .user-icon {
+            width: 30px; height: 30px;
+            background: #248aff;
+            border: 3px solid white;
+            border-radius: 50% 50% 0 50%; /* Forme de goutte */
+            transform: rotate(45deg);
+            box-shadow: 0 0 15px rgba(36, 138, 255, 0.6);
+            transition: transform 0.3s ease-out, top 0.3s, left 0.3s;
+        }
     </style>
 </head>
 <body>
@@ -33,102 +43,3 @@
         <div><span id="speed" class="val">0</span><span class="label">KM/H</span></div>
         <div><span id="arrow">🧭</span><span id="instruction" class="label" style="display:block; font-size:0.9rem; color:#3498db;">PRÊT</span></div>
         <div><span id="status" class="val" style="font-size: 1.2rem; color: #e67e22;">OFF</span><span class="label">SIGNAL</span></div>
-    </div>
-
-    <div id="map"></div>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <script>
-        const map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        const speedDiv = document.getElementById('speed');
-        const statusDiv = document.getElementById('status');
-        const arrowDiv = document.getElementById('arrow');
-        const instrDiv = document.getElementById('instruction');
-        let tracePoints = [];
-        let traceLayer;
-        let watchId = null;
-
-        const blueDotIcon = L.divIcon({ className: 'blue-dot', iconSize: [20, 20], iconAnchor: [10, 10] });
-        let userMarker = L.marker([0,0], {icon: blueDotIcon}).addTo(map);
-
-        function getBearing(p1, p2) {
-            const lat1 = p1[0] * Math.PI / 180; const lat2 = p2[0] * Math.PI / 180;
-            const lon1 = p1[1] * Math.PI / 180; const lon2 = p2[1] * Math.PI / 180;
-            const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
-            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
-            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        }
-
-        document.getElementById('gpxInput').onchange = function(e) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(event.target.result, "text/xml");
-                const pts = Array.from(xml.querySelectorAll('trkpt')).map(pt => [
-                    parseFloat(pt.getAttribute('lat')),
-                    parseFloat(pt.getAttribute('lon'))
-                ]);
-                if (pts.length > 0) {
-                    tracePoints = pts;
-                    if (traceLayer) map.removeLayer(traceLayer);
-                    traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6, opacity: 0.6}).addTo(map);
-                    map.fitBounds(traceLayer.getBounds());
-                    instrDiv.innerText = "TRAJET CHARGÉ";
-                    document.getElementById('btn-file').innerText = "✅ OK";
-                }
-            };
-            reader.readAsText(e.target.files[0]);
-        };
-
-        document.getElementById('btn-gps').onclick = function() {
-            // Suppression du message bloquant : on lance le GPS même si le fichier semble vide pour tester le signal
-            statusDiv.innerText = "ON";
-            statusDiv.style.color = "#2ecc71";
-            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-
-            watchId = navigator.geolocation.watchPosition(function(pos) {
-                const ici = [pos.coords.latitude, pos.coords.longitude];
-                const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-                speedDiv.innerText = speed;
-                userMarker.setLatLng(ici);
-                map.panTo(ici);
-
-                if (tracePoints.length > 0) {
-                    let minD = Infinity; let idx = -1;
-                    for (let i = 0; i < tracePoints.length; i++) {
-                        let d = L.latLng(ici).distanceTo(tracePoints[i]);
-                        if (d < minD) { minD = d; idx = i; }
-                    }
-                    if (idx !== -1 && idx < tracePoints.length - 12) {
-                        let p1 = tracePoints[idx]; let p2 = tracePoints[idx + 6]; let p3 = tracePoints[idx + 12];
-                        let b1 = getBearing(p1, p2); let b2 = getBearing(p2, p3);
-                        let diff = b2 - b1;
-                        if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
-                        if (speed < 3) { arrowDiv.innerText = "🛑"; instrDiv.innerText = "ARRÊT"; }
-                        else if (diff > 25) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
-                        else if (diff < -25) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
-                        else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
-                    }
-                } else {
-                    instrDiv.innerText = "ATTENTE GPX";
-                }
-            }, (err) => { alert("Active ton GPS"); }, { enableHighAccuracy: true });
-        };
-
-        document.getElementById('btn-stop').onclick = function() {
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-                statusDiv.innerText = "OFF";
-                statusDiv.style.color = "#e67e22";
-                speedDiv.innerText = "0";
-                arrowDiv.innerText = "🧭";
-                instrDiv.innerText = "STOPPÉ";
-            }
-        };
-    </script>
-</body>
-</html>
