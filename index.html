@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Correction Hors Trajet</title>
+    <title>GPS BUS - Actualisation Forcée</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -73,15 +73,18 @@
                     if (traceLayer) map.removeLayer(traceLayer);
                     traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6, opacity: 0.6}).addTo(map);
                     map.fitBounds(traceLayer.getBounds());
-                    instrDiv.innerText = "TRAJET CHARGÉ";
+                    instrDiv.innerText = "TRAJET OK";
                 }
             };
             reader.readAsText(e.target.files[0]);
         };
 
+        // Fonction de démarrage avec actualisation haute fréquence
         document.getElementById('btn-gps').onclick = function() {
-            statusDiv.innerText = "ON";
+            statusDiv.innerText = "ACTIF";
             statusDiv.style.color = "#2ecc71";
+            
+            // On coupe l'ancien suivi s'il existe pour forcer une nouvelle recherche
             if (watchId !== null) navigator.geolocation.clearWatch(watchId);
 
             watchId = navigator.geolocation.watchPosition(function(pos) {
@@ -95,23 +98,17 @@
                 if (speed < 2) {
                     arrowDiv.innerText = "🛑";
                     instrDiv.innerText = "ARRÊT";
-                    return;
-                }
-
-                if (tracePoints.length > 0) {
+                } else if (tracePoints.length > 0) {
                     let minD = Infinity; let idx = -1;
                     for (let i = 0; i < tracePoints.length; i++) {
                         let d = L.latLng(ici).distanceTo(tracePoints[i]);
                         if (d < minD) { minD = d; idx = i; }
                     }
 
-                    // --- NOUVELLE LOGIQUE DE SÉCURITÉ ---
-                    if (minD > 25) { // Si tu es à plus de 25m de la ligne bleue
+                    if (minD > 25) {
                         arrowDiv.innerText = "⚠️";
                         instrDiv.innerText = "HORS TRAJET";
-                        instrDiv.style.color = "#e67e22";
                     } else if (idx !== -1 && idx < tracePoints.length - 12) {
-                        instrDiv.style.color = "#3498db";
                         let p1 = tracePoints[idx]; let p2 = tracePoints[idx + 6]; let p3 = tracePoints[idx + 12];
                         let b1 = getBearing(p1, p2); let b2 = getBearing(p2, p3);
                         let diff = b2 - b1;
@@ -122,7 +119,14 @@
                         else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
                     }
                 }
-            }, null, { enableHighAccuracy: true });
+            }, (err) => {
+                console.error(err);
+                statusDiv.innerText = "ERREUR";
+            }, { 
+                enableHighAccuracy: true, // Force l'utilisation de la puce GPS
+                maximumAge: 0,            // Ne pas utiliser de position en cache
+                timeout: 5000             // Actualiser toutes les 5 secondes maximum
+            });
         };
 
         document.getElementById('btn-stop').onclick = function() {
