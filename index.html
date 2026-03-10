@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - NAVIGATION FINALE</title>
+    <title>GPS BUS - Position Point Bleu</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; }
@@ -24,13 +24,21 @@
 
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
+
+        /* Style du point bleu GPS */
+        .blue-dot {
+            background-color: #248aff;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
     </style>
 </head>
 <body>
 
     <div id="controls">
-        <label class="btn" id="btn-file"> CHARGER GPX<input type="file" id="gpxInput" accept=".gpx"></label>
-        <button class="btn" id="btn-gps"> START GPS</button>
+        <label class="btn" id="btn-file">📂 CHARGER GPX<input type="file" id="gpxInput" accept=".gpx"></label>
+        <button class="btn" id="btn-gps">🚀 START GPS</button>
     </div>
 
     <div id="dashboard">
@@ -39,7 +47,7 @@
             <span class="label">KM/H</span>
         </div>
         <div>
-            <span id="arrow"></span>
+            <span id="arrow">🧭</span>
             <span id="instruction" class="label" style="display:block; font-size:0.9rem; color:#3498db;">PRÊT</span>
         </div>
         <div>
@@ -53,7 +61,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const map = L.map('map', { zoomControl: false }).setView([50.79, 4.41], 15);
+        const map = L.map('map', { zoomControl: false }).setView([50.79, 4.41], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         const speedDiv = document.getElementById('speed');
@@ -63,9 +71,16 @@
         
         let tracePoints = [];
         let traceLayer;
-        let userMarker = L.circleMarker([0,0], {radius: 10, color: 'red', fillColor: 'white', fillOpacity: 1, weight: 3}).addTo(map);
 
-        // Calcul de l'angle entre deux points
+        // Création du Point Bleu (Icone personnalisée)
+        const blueDotIcon = L.divIcon({
+            className: 'blue-dot',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        
+        let userMarker = L.marker([0,0], {icon: blueDotIcon}).addTo(map);
+
         function getBearing(p1, p2) {
             const lat1 = p1[0] * Math.PI / 180;
             const lat2 = p2[0] * Math.PI / 180;
@@ -88,10 +103,10 @@
 
                 if (tracePoints.length > 0) {
                     if (traceLayer) map.removeLayer(traceLayer);
-                    traceLayer = L.polyline(tracePoints, {color: 'blue', weight: 5}).addTo(map);
+                    traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6, opacity: 0.6}).addTo(map);
                     map.fitBounds(traceLayer.getBounds());
                     instrDiv.innerText = "TRAJET OK";
-                    document.getElementById('btn-file').innerText = " GPX OK";
+                    document.getElementById('btn-file').innerText = "✅ GPX OK";
                 }
             };
             reader.readAsText(e.target.files[0]);
@@ -108,14 +123,14 @@
                 
                 speedDiv.innerText = speed;
                 userMarker.setLatLng(ici);
+                
+                // On centre la carte sur le point bleu automatiquement
                 map.panTo(ici);
 
-                // LOGIQUE DE GUIDAGE
                 if (speed < 3) {
-                    arrowDiv.innerText = "";
-                    instrDiv.innerText = "ARRET";
+                    arrowDiv.innerText = "🛑";
+                    instrDiv.innerText = "ARRÊT";
                 } else {
-                    // Trouver le point du trajet le plus proche
                     let minD = Infinity;
                     let idx = -1;
                     for (let i = 0; i < tracePoints.length; i++) {
@@ -123,7 +138,6 @@
                         if (d < minD) { minD = d; idx = i; }
                     }
 
-                    // Regarder 10 points devant (environ 40-50m)
                     if (idx !== -1 && idx < tracePoints.length - 12) {
                         let p_actuel = tracePoints[idx];
                         let p_futur = tracePoints[idx + 6]; 
@@ -137,14 +151,14 @@
                         if (diff < -180) diff += 360;
 
                         if (diff > 25) { 
-                            arrowDiv.innerText = ""; 
+                            arrowDiv.innerText = "➜"; 
                             instrDiv.innerText = "DROITE"; 
                         } else if (diff < -25) { 
-                            arrowDiv.innerText = ""; 
+                            arrowDiv.innerText = "⬅"; 
                             instrDiv.innerText = "GAUCHE"; 
                         } else { 
-                            arrowDiv.innerText = ""; 
-                            instrDiv.innerText = "TOUT DROIT"; 
+                            arrowDiv.innerText = "⬆"; 
+                            instrDiv.innerText = "DROIT"; 
                         }
                     }
                 }
