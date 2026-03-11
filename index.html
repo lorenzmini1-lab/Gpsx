@@ -3,36 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - FIX ERREUR</title>
+    <title>GPS BUS - VITESSE & ACTIF</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        #controls { background: #222; padding: 10px; z-index: 1000; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-        .btn { padding: 15px 0; font-size: 0.85rem; font-weight: bold; text-align: center; border-radius: 8px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; }
+        
+        #controls { background: #222; padding: 10px; display: flex; gap: 10px; z-index: 1000; }
+        .btn { flex: 1; padding: 18px; font-weight: bold; text-align: center; border-radius: 8px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; font-size: 1rem; }
         #btn-file { background: #f1c40f; color: #000; }
-        #btn-gps { background: #2ecc71; }
-        #btn-stop { background: #e74c3c; }
-        #dashboard { background: #fff; border-bottom: 3px solid #333; display: grid; grid-template-columns: 1fr 1.5fr 1fr; padding: 10px; text-align: center; }
-        .val { font-size: 2rem; font-weight: bold; color: #000; display: block; }
-        #arrow { font-size: 3rem; color: #3498db; }
-        .label { font-size: 0.7rem; color: #666; font-weight: bold; }
+        #btn-toggle { background: #2ecc71; } /* Vert par défaut */
+
+        #dashboard {
+            background: #fff; border-bottom: 3px solid #333;
+            display: grid; grid-template-columns: 1fr 1fr; padding: 15px; text-align: center; align-items: center;
+        }
+        .val { font-size: 3.5rem; font-weight: bold; color: #000; line-height: 1; }
+        #arrow { font-size: 3.5rem; color: #3498db; }
+        .label { font-size: 0.9rem; color: #666; font-weight: bold; text-transform: uppercase; }
+
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
-        .user-icon { width: 30px; height: 30px; background: #248aff; border: 3px solid white; border-radius: 50% 50% 0 50%; transform: rotate(45deg); box-shadow: 0 0 15px rgba(36, 138, 255, 0.6); }
+        .user-dot { width: 16px; height: 16px; background: #248aff; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
     <div id="controls">
         <label class="btn" id="btn-file">📂 GPX<input type="file" id="gpxInput" accept=".gpx"></label>
-        <button class="btn" id="btn-gps">🚀 START</button>
-        <button class="btn" id="btn-stop">🛑 STOP</button>
+        <button class="btn" id="btn-toggle">🚀 ACTIVER GPS</button>
     </div>
 
     <div id="dashboard">
-        <div><span id="speed" class="val">0</span><span class="label">KM/H</span></div>
-        <div><span id="arrow">🧭</span><span id="instruction" class="label" style="display:block; font-size:0.8rem; color:#3498db;">PRÊT</span></div>
-        <div><span id="status" class="val" style="font-size: 1rem; color: #e67e22;">OFF</span><span class="label">SIGNAL</span></div>
+        <div>
+            <span id="speed" class="val">0</span><br>
+            <span class="label">KM/H</span>
+        </div>
+        <div>
+            <span id="arrow">⬆️</span><br>
+            <span id="instruction" class="label" style="color:#3498db;">DIRECTION</span>
+        </div>
     </div>
 
     <div id="map"></div>
@@ -44,71 +53,91 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         const speedDiv = document.getElementById('speed');
-        const statusDiv = document.getElementById('status');
         const arrowDiv = document.getElementById('arrow');
         const instrDiv = document.getElementById('instruction');
+        const btnToggle = document.getElementById('btn-toggle');
         
         let tracePoints = [];
-        let traceLayer;
+        let traceLayer = null;
         let watchId = null;
 
-        const icon = L.divIcon({ className: 'user-icon-container', html: '<div id="user-dot" class="user-icon"></div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+        const icon = L.divIcon({ className: 'user-dot', iconSize: [22, 22], iconAnchor: [11, 11] });
         let userMarker = L.marker([0,0], {icon: icon}).addTo(map);
+
+        function getBearing(p1, p2) {
+            const lat1 = p1[0] * Math.PI / 180, lat2 = p2[0] * Math.PI / 180;
+            const lon1 = p1[1] * Math.PI / 180, lon2 = p2[1] * Math.PI / 180;
+            const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
 
         document.getElementById('gpxInput').onchange = function(e) {
             const reader = new FileReader();
             reader.onload = function(event) {
                 const parser = new DOMParser();
                 const xml = parser.parseFromString(event.target.result, "text/xml");
-                tracePoints = Array.from(xml.querySelectorAll('trkpt')).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
+                tracePoints = Array.from(xml.querySelectorAll('trkpt')).map(pt => [
+                    parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))
+                ]);
                 if (tracePoints.length > 0) {
                     if (traceLayer) map.removeLayer(traceLayer);
-                    traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6, opacity: 0.6}).addTo(map);
+                    traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6}).addTo(map);
                     map.fitBounds(traceLayer.getBounds());
-                    instrDiv.innerText = "GPX OK";
+                    instrDiv.innerText = "TRAJET PRÊT";
                 }
             };
             reader.readAsText(e.target.files[0]);
         };
 
-        document.getElementById('btn-gps').onclick = function() {
-            if (!navigator.geolocation) {
-                alert("Ton navigateur ne supporte pas le GPS.");
-                return;
-            }
-
-            statusDiv.innerText = "RECH...";
-            statusDiv.style.color = "#f1c40f";
-
-            watchId = navigator.geolocation.watchPosition(function(pos) {
-                statusDiv.innerText = "FIX";
-                statusDiv.style.color = "#2ecc71";
-                const ici = [pos.coords.latitude, pos.coords.longitude];
-                speedDiv.innerText = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-                userMarker.setLatLng(ici);
-                map.panTo(ici);
-            }, function(err) {
-                statusDiv.style.color = "#e74c3c";
-                if (err.code === 1) statusDiv.innerText = "REFUSÉ";
-                else if (err.code === 2) statusDiv.innerText = "NON DISPO";
-                else if (err.code === 3) statusDiv.innerText = "TIMEOUT";
-                else statusDiv.innerText = "ERREUR";
-                
-                alert("Erreur GPS (" + err.code + "): " + err.message + "\n\nAssure-toi d'être sur un site en HTTPS et d'avoir autorisé la position.");
-            }, { 
-                enableHighAccuracy: true, 
-                maximumAge: 0,
-                timeout: 15000 
-            });
-        };
-
-        document.getElementById('btn-stop').onclick = function() {
-            if (watchId !== null) {
+        btnToggle.onclick = function() {
+            if (watchId === null) {
+                // ACTIVER LE GPS
+                watchId = navigator.geolocation.watchPosition(updatePos, null, { enableHighAccuracy: true, maximumAge: 0 });
+                btnToggle.innerText = "🛑 DÉSACTIVER GPS";
+                btnToggle.style.background = "#e74c3c";
+            } else {
+                // DÉSACTIVER LE GPS
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
-                statusDiv.innerText = "OFF";
+                btnToggle.innerText = "🚀 ACTIVER GPS";
+                btnToggle.style.background = "#2ecc71";
+                speedDiv.innerText = "0";
+                arrowDiv.innerText = "🧭";
+                instrDiv.innerText = "GPS DÉCONNECTÉ";
             }
         };
+
+        function updatePos(pos) {
+            const ici = [pos.coords.latitude, pos.coords.longitude];
+            const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
+            
+            speedDiv.innerText = speed;
+            userMarker.setLatLng(ici);
+            map.panTo(ici);
+
+            if (speed < 2) {
+                arrowDiv.innerText = "🛑";
+                instrDiv.innerText = "ARRÊT";
+            } else if (tracePoints.length > 0) {
+                let minD = Infinity, idx = -1;
+                for (let i = 0; i < tracePoints.length; i++) {
+                    let d = L.latLng(ici).distanceTo(tracePoints[i]);
+                    if (d < minD) { minD = d; idx = i; }
+                }
+
+                if (idx !== -1 && idx < tracePoints.length - 12) {
+                    let b1 = getBearing(tracePoints[idx], tracePoints[idx + 6]);
+                    let b2 = getBearing(tracePoints[idx + 6], tracePoints[idx + 12]);
+                    let diff = b2 - b1;
+                    if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
+
+                    if (diff > 20) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
+                    else if (diff < -20) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
+                    else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
+                }
+            }
+        }
     </script>
 </body>
 </html>
