@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - VITESSE & ACTIF</title>
+    <title>GPS BUS - Vitesse Ajustée</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -11,15 +11,16 @@
         #controls { background: #222; padding: 10px; display: flex; gap: 10px; z-index: 1000; }
         .btn { flex: 1; padding: 18px; font-weight: bold; text-align: center; border-radius: 8px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; font-size: 1rem; }
         #btn-file { background: #f1c40f; color: #000; }
-        #btn-toggle { background: #2ecc71; } /* Vert par défaut */
+        #btn-toggle { background: #2ecc71; }
 
         #dashboard {
             background: #fff; border-bottom: 3px solid #333;
-            display: grid; grid-template-columns: 1fr 1fr; padding: 15px; text-align: center; align-items: center;
+            display: grid; grid-template-columns: 1fr 1fr; padding: 10px; text-align: center; align-items: center;
         }
-        .val { font-size: 3.5rem; font-weight: bold; color: #000; line-height: 1; }
-        #arrow { font-size: 3.5rem; color: #3498db; }
-        .label { font-size: 0.9rem; color: #666; font-weight: bold; text-transform: uppercase; }
+        /* TAILLE DE LA VITESSE RÉDUITE ICI */
+        .val { font-size: 2.2rem; font-weight: bold; color: #000; line-height: 1.1; }
+        #arrow { font-size: 3rem; color: #3498db; }
+        .label { font-size: 0.8rem; color: #666; font-weight: bold; text-transform: uppercase; }
 
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
@@ -92,12 +93,10 @@
 
         btnToggle.onclick = function() {
             if (watchId === null) {
-                // ACTIVER LE GPS
                 watchId = navigator.geolocation.watchPosition(updatePos, null, { enableHighAccuracy: true, maximumAge: 0 });
                 btnToggle.innerText = "🛑 DÉSACTIVER GPS";
                 btnToggle.style.background = "#e74c3c";
             } else {
-                // DÉSACTIVER LE GPS
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
                 btnToggle.innerText = "🚀 ACTIVER GPS";
