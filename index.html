@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - POSITION FIX</title>
+    <title>GPS BUS - ALERTE HORS TRAJET</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { height: 100%; margin: 0; padding: 0; background: #fff; overflow: hidden; display: flex; flex-direction: column; }
@@ -75,9 +75,7 @@
 
         btnToggle.onclick = function() {
             if (watchId === null) {
-                watchId = navigator.geolocation.watchPosition(updateGPS, (err) => {
-                    alert("Erreur GPS : Active la localisation");
-                }, { enableHighAccuracy: true, maximumAge: 0 });
+                watchId = navigator.geolocation.watchPosition(updateGPS, null, { enableHighAccuracy: true, maximumAge: 0 });
                 btnToggle.innerText = "🛑 COUPER";
                 btnToggle.style.background = "#e74c3c";
             } else {
@@ -103,8 +101,7 @@
                 accuracyCircle = L.circle(ici, { radius: precision, weight: 1, color: '#248aff', fillOpacity: 0.1 }).addTo(map);
             } else {
                 userMarker.setLatLng(ici);
-                accuracyCircle.setLatLng(ici);
-                accuracyCircle.setRadius(precision);
+                accuracyCircle.setLatLng(ici).setRadius(precision);
             }
 
             speedDiv.innerText = speed;
@@ -122,9 +119,17 @@
                     if (d < minD) { minD = d; idx = i; }
                 }
 
-                if (speed < 4) {
-                    arrowDiv.innerText = "🛑"; instrDiv.innerText = "ARRÊT";
+                // VERIFICATION HORS TRAJET (seuil de 50 mètres)
+                if (minD > 50) {
+                    arrowDiv.innerText = "⚠️";
+                    instrDiv.innerText = "HORS TRAJET";
+                    instrDiv.style.color = "#e67e22";
+                } else if (speed < 4) {
+                    arrowDiv.innerText = "🛑";
+                    instrDiv.innerText = "ARRÊT";
+                    instrDiv.style.color = "#3498db";
                 } else {
+                    instrDiv.style.color = "#3498db";
                     let b1 = getBearing(tracePoints[idx], tracePoints[Math.min(idx + 6, tracePoints.length - 1)]);
                     let b2 = getBearing(tracePoints[Math.min(idx + 6, tracePoints.length - 1)], tracePoints[Math.min(idx + 15, tracePoints.length - 1)]);
                     let diff = b2 - b1;
