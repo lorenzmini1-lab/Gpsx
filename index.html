@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - ULTRA RÉACTIF</title>
+    <title>GPS BUS - FONCTION RECENTRER</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { height: 100%; margin: 0; padding: 0; background: #fff; overflow: hidden; display: flex; flex-direction: column; }
-        #controls { background: #222; padding: 6px; display: flex; gap: 6px; z-index: 1001; flex-shrink: 0; }
-        .btn { flex: 1; padding: 10px; font-weight: bold; text-align: center; border-radius: 6px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; font-size: 0.8rem; transition: transform 0.1s; }
+        #controls { background: #222; padding: 6px; display: flex; gap: 4px; z-index: 1001; flex-shrink: 0; }
+        .btn { flex: 1; padding: 10px; font-weight: bold; text-align: center; border-radius: 6px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; font-size: 0.7rem; transition: transform 0.1s; }
         .btn:active { transform: scale(0.95); }
         #btn-file { background: #f1c40f; color: #000; }
         #btn-toggle { background: #2ecc71; }
+        #btn-refresh { background: #3498db; } /* Nouveau bouton bleu */
+        
         #dashboard { background: #fff; border-bottom: 2px solid #333; display: grid; grid-template-columns: 1fr 1fr; padding: 8px; text-align: center; align-items: center; z-index: 1001; flex-shrink: 0; }
         .val { font-size: 2.2rem; font-weight: bold; color: #000; line-height: 1; }
-        #arrow { font-size: 2.8rem; color: #3498db; transition: all 0.2s ease-in-out; }
+        #arrow { font-size: 2.8rem; color: #3498db; }
         .label { font-size: 0.75rem; color: #666; font-weight: bold; text-transform: uppercase; }
         #map { flex-grow: 1; width: 100%; background: #e0e0e0; z-index: 1; }
         input[type="file"] { display: none; }
@@ -26,6 +28,7 @@
     <div id="controls">
         <label class="btn" id="btn-file">📂 GPX<input type="file" id="gpxInput" accept=".gpx"></label>
         <button class="btn" id="btn-toggle">🚀 ACTIVER</button>
+        <button class="btn" id="btn-refresh">📍 RECENTRER</button>
     </div>
 
     <div id="dashboard">
@@ -38,24 +41,20 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const map = L.map('map', { 
-            zoomControl: false, 
-            fadeAnimation: true, 
-            zoomAnimation: true,
-            markerZoomAnimation: true 
-        }).setView([50.85, 4.35], 16);
-        
+        const map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         const speedDiv = document.getElementById('speed');
         const arrowDiv = document.getElementById('arrow');
         const instrDiv = document.getElementById('instruction');
         const btnToggle = document.getElementById('btn-toggle');
+        const btnRefresh = document.getElementById('btn-refresh');
         
         let tracePoints = [];
         let watchId = null;
         let userMarker = null;
         let accuracyCircle = null;
+        let lastKnownPos = null;
 
         function getBearing(p1, p2) {
             const lat1 = p1[0] * Math.PI / 180, lat2 = p2[0] * Math.PI / 180;
@@ -72,22 +71,33 @@
                 const xml = parser.parseFromString(event.target.result, "text/xml");
                 tracePoints = Array.from(xml.querySelectorAll('trkpt')).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
                 if (tracePoints.length > 0) {
-                    L.polyline(tracePoints, {color: '#007bff', weight: 5, smoothFactor: 1}).addTo(map);
-                    map.fitBounds(L.polyline(tracePoints).getBounds(), {padding: [20, 20]});
+                    L.polyline(tracePoints, {color: '#007bff', weight: 5}).addTo(map);
+                    map.fitBounds(L.polyline(tracePoints).getBounds());
                     instrDiv.innerText = "LIGNE OK";
                 }
             };
             reader.readAsText(e.target.files[0]);
         };
 
+        // Fonction pour recentrer manuellement
+        btnRefresh.onclick = function() {
+            if (lastKnownPos) {
+                map.setView(lastKnownPos, map.getZoom(), { animate: true });
+                // Petit flash visuel pour confirmer l'action
+                btnRefresh.style.opacity = "0.5";
+                setTimeout(() => btnRefresh.style.opacity = "1", 200);
+            } else {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    const ici = [pos.coords.latitude, pos.coords.longitude];
+                    map.setView(ici, 17, { animate: true });
+                });
+            }
+        };
+
         btnToggle.onclick = function() {
             if (watchId === null) {
-                watchId = navigator.geolocation.watchPosition(updateGPS, null, { 
-                    enableHighAccuracy: true, 
-                    maximumAge: 0, 
-                    timeout: 5000 
-                });
-                btnToggle.innerText = "🛑 COUPER";
+                watchId = navigator.geolocation.watchPosition(updateGPS, null, { enableHighAccuracy: true, maximumAge: 0 });
+                btnToggle.innerText = "🛑 STOP";
                 btnToggle.style.background = "#e74c3c";
             } else {
                 navigator.geolocation.clearWatch(watchId);
@@ -102,6 +112,7 @@
 
         function updateGPS(pos) {
             const ici = [pos.coords.latitude, pos.coords.longitude];
+            lastKnownPos = ici;
             const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
             const precision = pos.coords.accuracy;
 
@@ -115,20 +126,15 @@
             }
 
             speedDiv.innerText = speed;
-            // Utilisation de panTo avec une durée courte pour plus de réactivité
             map.panTo(ici, { animate: true, duration: 0.5 });
 
-            // Zoom auto réactif
-            let targetZ = speed < 12 ? 18 : (speed > 50 ? 14 : 16);
-            if (map.getZoom() !== targetZ) map.setZoom(targetZ, { animate: true });
+            let z = speed < 12 ? 18 : (speed > 50 ? 14 : 16);
+            if (map.getZoom() !== z) map.setZoom(z);
 
             if (tracePoints.length > 5) {
                 let minD = Infinity, idx = 0;
-                const userLatLng = L.latLng(ici);
-                
-                // Recherche optimisée du point le plus proche
                 for (let i = 0; i < tracePoints.length; i++) {
-                    let d = userLatLng.distanceTo(tracePoints[i]);
+                    let d = L.latLng(ici).distanceTo(tracePoints[i]);
                     if (d < minD) { minD = d; idx = i; }
                 }
 
