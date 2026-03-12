@@ -3,31 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - FIX CARTE</title>
+    <title>GPS BUS - POSITION FIX</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        /* On force l'affichage sur toute la hauteur */
         html, body { height: 100%; margin: 0; padding: 0; background: #fff; overflow: hidden; display: flex; flex-direction: column; }
-        
         #controls { background: #222; padding: 6px; display: flex; gap: 6px; z-index: 1001; flex-shrink: 0; }
         .btn { flex: 1; padding: 10px; font-weight: bold; text-align: center; border-radius: 6px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; font-size: 0.8rem; }
         #btn-file { background: #f1c40f; color: #000; }
         #btn-toggle { background: #2ecc71; }
-
-        #dashboard {
-            background: #fff; border-bottom: 2px solid #333;
-            display: grid; grid-template-columns: 1fr 1fr; padding: 8px; text-align: center; align-items: center;
-            z-index: 1001; flex-shrink: 0;
-        }
+        #dashboard { background: #fff; border-bottom: 2px solid #333; display: grid; grid-template-columns: 1fr 1fr; padding: 8px; text-align: center; align-items: center; z-index: 1001; flex-shrink: 0; }
         .val { font-size: 2.2rem; font-weight: bold; color: #000; line-height: 1; }
         #arrow { font-size: 2.8rem; color: #3498db; }
         .label { font-size: 0.75rem; color: #666; font-weight: bold; text-transform: uppercase; }
-
-        /* Correction majeure : on force la carte à prendre tout l'espace restant */
         #map { flex-grow: 1; width: 100%; background: #e0e0e0; z-index: 1; }
-        
         input[type="file"] { display: none; }
-        .user-dot { width: 14px; height: 14px; background: #248aff; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.3); }
+        .user-dot { width: 16px; height: 16px; background: #248aff; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
@@ -47,12 +37,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // Initialisation avec vérification de la taille
         const map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        // On force la carte à recalculer sa taille après 500ms pour éviter l'écran gris
-        setTimeout(() => { map.invalidateSize(); }, 500);
 
         const speedDiv = document.getElementById('speed');
         const arrowDiv = document.getElementById('arrow');
@@ -61,8 +47,8 @@
         
         let tracePoints = [];
         let watchId = null;
-        const icon = L.divIcon({ className: 'user-dot', iconSize: [18, 18], iconAnchor: [9, 9] });
-        let userMarker = L.marker([0,0], {icon: icon}).addTo(map);
+        let userMarker = null;
+        let accuracyCircle = null;
 
         function getBearing(p1, p2) {
             const lat1 = p1[0] * Math.PI / 180, lat2 = p2[0] * Math.PI / 180;
@@ -81,7 +67,7 @@
                 if (tracePoints.length > 0) {
                     L.polyline(tracePoints, {color: '#007bff', weight: 5}).addTo(map);
                     map.fitBounds(L.polyline(tracePoints).getBounds());
-                    instrDiv.innerText = "TRAJET OK";
+                    instrDiv.innerText = "LIGNE OK";
                 }
             };
             reader.readAsText(e.target.files[0]);
@@ -89,12 +75,18 @@
 
         btnToggle.onclick = function() {
             if (watchId === null) {
-                watchId = navigator.geolocation.watchPosition(updateGPS, null, { enableHighAccuracy: true });
+                watchId = navigator.geolocation.watchPosition(updateGPS, (err) => {
+                    alert("Erreur GPS : Active la localisation");
+                }, { enableHighAccuracy: true, maximumAge: 0 });
                 btnToggle.innerText = "🛑 COUPER";
                 btnToggle.style.background = "#e74c3c";
             } else {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
+                if (userMarker) map.removeLayer(userMarker);
+                if (accuracyCircle) map.removeLayer(accuracyCircle);
+                userMarker = null;
+                accuracyCircle = null;
                 btnToggle.innerText = "🚀 ACTIVER";
                 btnToggle.style.background = "#2ecc71";
             }
@@ -103,18 +95,26 @@
         function updateGPS(pos) {
             const ici = [pos.coords.latitude, pos.coords.longitude];
             const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-            
+            const precision = pos.coords.accuracy;
+
+            if (!userMarker) {
+                const icon = L.divIcon({ className: 'user-dot', iconSize: [16, 16], iconAnchor: [8, 8] });
+                userMarker = L.marker(ici, {icon: icon}).addTo(map);
+                accuracyCircle = L.circle(ici, { radius: precision, weight: 1, color: '#248aff', fillOpacity: 0.1 }).addTo(map);
+            } else {
+                userMarker.setLatLng(ici);
+                accuracyCircle.setLatLng(ici);
+                accuracyCircle.setRadius(precision);
+            }
+
             speedDiv.innerText = speed;
-            userMarker.setLatLng(ici);
             map.panTo(ici);
 
-            // ZOOM AUTO
             let z = 16;
             if (speed < 10) z = 18;
             else if (speed > 45) z = 14;
             if (map.getZoom() !== z) map.setZoom(z);
 
-            // DIRECTIONS
             if (tracePoints.length > 5) {
                 let minD = Infinity, idx = 0;
                 for (let i = 0; i < tracePoints.length; i++) {
