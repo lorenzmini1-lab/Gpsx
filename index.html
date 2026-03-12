@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Zoom & Vitesse FIX</title>
+    <title>GPS BUS PRO - STABLE</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -11,13 +11,13 @@
         .btn { flex: 1; padding: 12px; font-weight: bold; text-align: center; border-radius: 6px; border: none; cursor: pointer; color: #fff; text-transform: uppercase; font-size: 0.8rem; }
         #btn-file { background: #f1c40f; color: #000; }
         #btn-toggle { background: #2ecc71; }
-        #dashboard { background: #fff; border-bottom: 2px solid #333; display: grid; grid-template-columns: 1fr 1fr; padding: 8px; text-align: center; align-items: center; }
-        .val { font-size: 2.2rem; font-weight: bold; color: #000; }
-        #arrow { font-size: 3rem; color: #3498db; }
-        .label { font-size: 0.75rem; color: #666; font-weight: bold; }
+        #dashboard { background: #fff; border-bottom: 2px solid #333; display: grid; grid-template-columns: 1fr 1fr; padding: 6px; text-align: center; align-items: center; }
+        .val { font-size: 2rem; font-weight: bold; color: #000; line-height: 1; }
+        #arrow { font-size: 2.8rem; color: #3498db; }
+        .label { font-size: 0.7rem; color: #666; font-weight: bold; text-transform: uppercase; }
         #map { flex: 1; width: 100%; height: 100%; background: #eee; }
         input[type="file"] { display: none; }
-        .user-dot { width: 14px; height: 14px; background: #248aff; border: 2px solid white; border-radius: 50%; }
+        .user-dot { width: 14px; height: 14px; background: #248aff; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
@@ -37,7 +37,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 16);
+        const map = L.map('map', { zoomControl: false, zoomSnap: 0.5 }).setView([50.85, 4.35], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         const speedDiv = document.getElementById('speed');
@@ -47,13 +47,12 @@
         
         let tracePoints = [];
         let watchId = null;
-        let lastPos = null;
-        let lastTime = null;
 
         const icon = L.divIcon({ className: 'user-dot', iconSize: [18, 18], iconAnchor: [9, 9] });
         let userMarker = L.marker([0,0], {icon: icon}).addTo(map);
 
         function getBearing(p1, p2) {
+            if (!p1 || !p2) return 0;
             const lat1 = p1[0] * Math.PI / 180, lat2 = p2[0] * Math.PI / 180;
             const lon1 = p1[1] * Math.PI / 180, lon2 = p2[1] * Math.PI / 180;
             const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
@@ -64,83 +63,74 @@
         document.getElementById('gpxInput').onchange = function(e) {
             const reader = new FileReader();
             reader.onload = function(event) {
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(event.target.result, "text/xml");
-                tracePoints = Array.from(xml.querySelectorAll('trkpt')).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
-                if (tracePoints.length > 0) {
-                    L.polyline(tracePoints, {color: '#007bff', weight: 5}).addTo(map);
-                    map.fitBounds(L.polyline(tracePoints).getBounds());
-                    instrDiv.innerText = "GPX CHARGÉ";
-                }
+                try {
+                    const parser = new DOMParser();
+                    const xml = parser.parseFromString(event.target.result, "text/xml");
+                    const pts = xml.querySelectorAll('trkpt');
+                    tracePoints = Array.from(pts).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
+                    
+                    if (tracePoints.length > 0) {
+                        L.polyline(tracePoints, {color: '#007bff', weight: 5}).addTo(map);
+                        map.fitBounds(L.polyline(tracePoints).getBounds());
+                        instrDiv.innerText = "LIGNE CHARGÉE";
+                        document.getElementById('btn-file').innerText = "✅ GPX";
+                    }
+                } catch(err) { alert("Erreur fichier GPX"); }
             };
             reader.readAsText(e.target.files[0]);
         };
 
         btnToggle.onclick = function() {
             if (watchId === null) {
-                watchId = navigator.geolocation.watchPosition(updateGPS, null, { 
-                    enableHighAccuracy: true, 
-                    timeout: 5000, 
-                    maximumAge: 0 
-                });
-                btnToggle.innerText = "🛑 COUPER";
+                watchId = navigator.geolocation.watchPosition(updateGPS, (err) => {
+                    console.error(err);
+                    instrDiv.innerText = "ERREUR SIGNAL";
+                }, { enableHighAccuracy: true, maximumAge: 0 });
+                btnToggle.innerText = "🛑 ARRÊTER";
                 btnToggle.style.background = "#e74c3c";
             } else {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
                 btnToggle.innerText = "🚀 ACTIVER";
                 btnToggle.style.background = "#2ecc71";
+                speedDiv.innerText = "0";
             }
         };
 
         function updateGPS(pos) {
             const ici = [pos.coords.latitude, pos.coords.longitude];
-            const now = Date.now();
-            let speed = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
-
-            // Calcul de secours pour la vitesse
-            if (speed < 1 && lastPos) {
-                const dist = L.latLng(ici).distanceTo(lastPos);
-                const timeDiff = (now - lastTime) / 1000;
-                if (timeDiff > 0) speed = (dist / timeDiff) * 3.6;
-            }
-
-            lastPos = ici;
-            lastTime = now;
-            const finalSpeed = Math.round(speed);
-            speedDiv.innerText = finalSpeed;
+            const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
+            
+            speedDiv.innerText = speed;
             userMarker.setLatLng(ici);
+            map.panTo(ici);
 
-            // RÉTABLISSEMENT DU ZOOM AUTOMATIQUE
-            let targetZoom = 16;
-            if (finalSpeed < 10) targetZoom = 18;
-            else if (finalSpeed > 45) targetZoom = 14;
-            else targetZoom = 16;
+            // ZOOM AUTOMATIQUE
+            let z = 16;
+            if (speed < 10) z = 18;
+            else if (speed > 45) z = 14.5;
+            if (map.getZoom() !== z) map.setZoom(z);
 
-            map.setView(ici, targetZoom, { animate: true, duration: 1 });
-
-            // Directions
-            if (tracePoints.length > 0) {
+            // DIRECTIONS
+            if (tracePoints.length > 10) {
                 let minD = Infinity, idx = 0;
                 for (let i = 0; i < tracePoints.length; i++) {
                     let d = L.latLng(ici).distanceTo(tracePoints[i]);
                     if (d < minD) { minD = d; idx = i; }
                 }
 
-                if (finalSpeed < 3) {
+                if (speed < 4) {
                     arrowDiv.innerText = "🛑"; instrDiv.innerText = "ARRÊT";
                 } else {
-                    let b1 = getBearing(tracePoints[idx], tracePoints[Math.min(idx + 5, tracePoints.length - 1)]);
-                    let b2 = getBearing(tracePoints[Math.min(idx + 5, tracePoints.length - 1)], tracePoints[Math.min(idx + 12, tracePoints.length - 1)]);
+                    const p1 = tracePoints[idx];
+                    const p2 = tracePoints[Math.min(idx + 6, tracePoints.length - 1)];
+                    const p3 = tracePoints[Math.min(idx + 14, tracePoints.length - 1)];
+                    
+                    const b1 = getBearing(p1, p2);
+                    const b2 = getBearing(p2, p3);
                     let diff = b2 - b1;
                     if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
 
-                    if (diff > 15) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
-                    else if (diff < -15) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
+                    if (diff > 18) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
+                    else if (diff < -18) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
                     else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
-                }
-            }
-        }
-    </script>
-</body>
-</html>
