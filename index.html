@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - Vitesse Réelle</title>
+    <title>GPS BUS - Zoom & Vitesse FIX</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -15,7 +15,7 @@
         .val { font-size: 2.2rem; font-weight: bold; color: #000; }
         #arrow { font-size: 3rem; color: #3498db; }
         .label { font-size: 0.75rem; color: #666; font-weight: bold; }
-        #map { flex: 1; width: 100%; height: 100%; }
+        #map { flex: 1; width: 100%; height: 100%; background: #eee; }
         input[type="file"] { display: none; }
         .user-dot { width: 14px; height: 14px; background: #248aff; border: 2px solid white; border-radius: 50%; }
     </style>
@@ -29,7 +29,7 @@
 
     <div id="dashboard">
         <div><span id="speed" class="val">0</span><br><span class="label">KM/H</span></div>
-        <div><span id="arrow">🧭</span><br><span id="instruction" class="label" style="color:#3498db;">DIRECTION</span></div>
+        <div><span id="arrow">🧭</span><br><span id="instruction" class="label" style="color:#3498db;">PRÊT</span></div>
     </div>
 
     <div id="map"></div>
@@ -37,7 +37,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 15);
+        const map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         const speedDiv = document.getElementById('speed');
@@ -70,7 +70,7 @@
                 if (tracePoints.length > 0) {
                     L.polyline(tracePoints, {color: '#007bff', weight: 5}).addTo(map);
                     map.fitBounds(L.polyline(tracePoints).getBounds());
-                    instrDiv.innerText = "PRÊT";
+                    instrDiv.innerText = "GPX CHARGÉ";
                 }
             };
             reader.readAsText(e.target.files[0]);
@@ -98,10 +98,10 @@
             const now = Date.now();
             let speed = pos.coords.speed ? pos.coords.speed * 3.6 : 0;
 
-            // Calcul de secours si speed est nul mais que la position change
+            // Calcul de secours pour la vitesse
             if (speed < 1 && lastPos) {
-                const dist = L.latLng(ici).distanceTo(lastPos); // distance en mètres
-                const timeDiff = (now - lastTime) / 1000; // temps en secondes
+                const dist = L.latLng(ici).distanceTo(lastPos);
+                const timeDiff = (now - lastTime) / 1000;
                 if (timeDiff > 0) speed = (dist / timeDiff) * 3.6;
             }
 
@@ -110,8 +110,16 @@
             const finalSpeed = Math.round(speed);
             speedDiv.innerText = finalSpeed;
             userMarker.setLatLng(ici);
-            map.panTo(ici);
 
+            // RÉTABLISSEMENT DU ZOOM AUTOMATIQUE
+            let targetZoom = 16;
+            if (finalSpeed < 10) targetZoom = 18;
+            else if (finalSpeed > 45) targetZoom = 14;
+            else targetZoom = 16;
+
+            map.setView(ici, targetZoom, { animate: true, duration: 1 });
+
+            // Directions
             if (tracePoints.length > 0) {
                 let minD = Infinity, idx = 0;
                 for (let i = 0; i < tracePoints.length; i++) {
@@ -123,13 +131,13 @@
                     arrowDiv.innerText = "🛑"; instrDiv.innerText = "ARRÊT";
                 } else {
                     let b1 = getBearing(tracePoints[idx], tracePoints[Math.min(idx + 5, tracePoints.length - 1)]);
-                    let b2 = getBearing(tracePoints[Math.min(idx + 5, tracePoints.length - 1)], tracePoints[Math.min(idx + 15, tracePoints.length - 1)]);
+                    let b2 = getBearing(tracePoints[Math.min(idx + 5, tracePoints.length - 1)], tracePoints[Math.min(idx + 12, tracePoints.length - 1)]);
                     let diff = b2 - b1;
                     if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
 
                     if (diff > 15) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
                     else if (diff < -15) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
-                    else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "TOUT DROIT"; }
+                    else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "DROIT"; }
                 }
             }
         }
