@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS BUS - FIX FINAL DIRECTIONS</title>
+    <title>GPS BUS - FIX DIRECTION</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -12,8 +12,8 @@
         #btn-file { background: #f1c40f; color: #000; }
         #btn-toggle { background: #2ecc71; }
         #dashboard { background: #fff; border-bottom: 2px solid #333; display: grid; grid-template-columns: 1fr 1fr; padding: 8px; text-align: center; align-items: center; }
-        .val { font-size: 2.2rem; font-weight: bold; color: #000; line-height: 1.1; }
-        #arrow { font-size: 2.8rem; color: #3498db; font-weight: bold; }
+        .val { font-size: 2.2rem; font-weight: bold; color: #000; }
+        #arrow { font-size: 3rem; color: #3498db; }
         .label { font-size: 0.75rem; color: #666; font-weight: bold; text-transform: uppercase; }
         #map { flex: 1; width: 100%; }
         input[type="file"] { display: none; }
@@ -52,95 +52,9 @@
         const icon = L.divIcon({ className: 'user-dot', iconSize: [22, 22], iconAnchor: [11, 11] });
         let userMarker = L.marker([0,0], {icon: icon}).addTo(map);
 
-        // Calcul de l'angle entre deux points
         function getBearing(p1, p2) {
             const lat1 = p1[0] * Math.PI / 180, lat2 = p2[0] * Math.PI / 180;
             const lon1 = p1[1] * Math.PI / 180, lon2 = p2[1] * Math.PI / 180;
             const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
             const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
-            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        }
-
-        // Chargement du fichier
-        document.getElementById('gpxInput').onchange = function(e) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(event.target.result, "text/xml");
-                const pts = xml.querySelectorAll('trkpt');
-                tracePoints = Array.from(pts).map(pt => [parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))]);
-                
-                if (tracePoints.length > 0) {
-                    if (traceLayer) map.removeLayer(traceLayer);
-                    traceLayer = L.polyline(tracePoints, {color: '#007bff', weight: 6}).addTo(map);
-                    map.fitBounds(traceLayer.getBounds());
-                    instrDiv.innerText = "TRAJET OK";
-                    document.getElementById('btn-file').innerText = "✅ GPX";
-                }
-            };
-            reader.readAsText(e.target.files[0]);
-        };
-
-        // On/Off GPS
-        btnToggle.onclick = function() {
-            if (watchId === null) {
-                watchId = navigator.geolocation.watchPosition(updateTracking, null, { enableHighAccuracy: true, maximumAge: 0 });
-                btnToggle.innerText = "🛑 DÉSACTIVER";
-                btnToggle.style.background = "#e74c3c";
-            } else {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-                btnToggle.innerText = "🚀 ACTIVER";
-                btnToggle.style.background = "#2ecc71";
-                speedDiv.innerText = "0";
-                arrowDiv.innerText = "🧭";
-                instrDiv.innerText = "STOP";
-            }
-        };
-
-        function updateTracking(pos) {
-            const ici = [pos.coords.latitude, pos.coords.longitude];
-            const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-            
-            speedDiv.innerText = speed;
-            userMarker.setLatLng(ici);
-
-            // Zoom Auto
-            let targetZoom = 16;
-            if (speed < 10) targetZoom = 18;
-            else if (speed > 45) targetZoom = 15;
-            map.setView(ici, targetZoom, { animate: true });
-
-            // LOGIQUE DES DIRECTIONS (RE-VÉRIFIÉE)
-            if (tracePoints.length > 0) {
-                let minD = Infinity, idx = -1;
-                // Trouver le point le plus proche sur la ligne bleue
-                for (let i = 0; i < tracePoints.length; i++) {
-                    let d = L.latLng(ici).distanceTo(tracePoints[i]);
-                    if (d < minD) { minD = d; idx = i; }
-                }
-
-                // Si on est à l'arrêt
-                if (speed < 3) {
-                    arrowDiv.innerText = "🛑";
-                    instrDiv.innerText = "ARRÊT";
-                } 
-                // Si on roule, calculer le virage à venir (index + 8 points devant)
-                else if (idx !== -1 && idx < tracePoints.length - 12) {
-                    let b1 = getBearing(tracePoints[idx], tracePoints[idx + 6]);
-                    let b2 = getBearing(tracePoints[idx + 6], tracePoints[idx + 12]);
-                    let diff = b2 - b1;
-                    if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
-
-                    if (diff > 22) { arrowDiv.innerText = "➜"; instrDiv.innerText = "DROITE"; }
-                    else if (diff < -22) { arrowDiv.innerText = "⬅"; instrDiv.innerText = "GAUCHE"; }
-                    else { arrowDiv.innerText = "⬆"; instrDiv.innerText = "TOUT DROIT"; }
-                } else if (idx >= tracePoints.length - 12) {
-                    arrowDiv.innerText = "🏁";
-                    instrDiv.innerText = "ARRIVÉE";
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+            return (Math.atan2(y, x) * 180 / Math.PI
